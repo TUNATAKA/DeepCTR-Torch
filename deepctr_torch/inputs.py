@@ -20,6 +20,7 @@ DEFAULT_GROUP_NAME = "default_group"
 # test git merge
 # 测试合并冲突
 # 测试冲突lalala
+# 测试冲突2
 # 单值离散特征
 class SparseFeat(namedtuple('SparseFeat',
                             ['name', 'vocabulary_size', 'embedding_dim', 'use_hash', 'dtype', 'embedding_name',
