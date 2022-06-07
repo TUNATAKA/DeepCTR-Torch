@@ -43,28 +43,24 @@ class Linear(nn.Module):
         self.varlen_sparse_feature_columns = list(
             filter(lambda x: isinstance(x, VarLenSparseFeat), feature_columns)) if len(feature_columns) else []
 
+        # embedding为1，相当于对离散特征进行线性变换
         self.embedding_dict = create_embedding_matrix(feature_columns, init_std, linear=True, sparse=False,
                                                       device=device)
 
-        #         nn.ModuleDict(
-        #             {feat.embedding_name: nn.Embedding(feat.dimension, 1, sparse=True) for feat in
-        #              self.sparse_feature_columns}
-        #         )
-        # .to("cuda:1")
         for tensor in self.embedding_dict.values():
             nn.init.normal_(tensor.weight, mean=0, std=init_std)
-
+        # 连续特征进行线性变换的参数
         if len(self.dense_feature_columns) > 0:
             self.weight = nn.Parameter(torch.Tensor(sum(fc.dimension for fc in self.dense_feature_columns), 1).to(
                 device))
             torch.nn.init.normal_(self.weight, mean=0, std=init_std)
 
     def forward(self, X, sparse_feat_refine_weight=None):
-
+        # batch * 1 * 1
         sparse_embedding_list = [self.embedding_dict[feat.embedding_name](
             X[:, self.feature_index[feat.name][0]:self.feature_index[feat.name][1]].long()) for
             feat in self.sparse_feature_columns]
-
+        # batch * 1
         dense_value_list = [X[:, self.feature_index[feat.name][0]:self.feature_index[feat.name][1]] for feat in
                             self.dense_feature_columns]
 
@@ -74,16 +70,19 @@ class Linear(nn.Module):
                                                         self.varlen_sparse_feature_columns, self.device)
 
         sparse_embedding_list += varlen_embedding_list
-
+        # batch * 1
         linear_logit = torch.zeros([X.shape[0], 1]).to(sparse_embedding_list[0].device)
         if len(sparse_embedding_list) > 0:
+            # batch * 1 * n
             sparse_embedding_cat = torch.cat(sparse_embedding_list, dim=-1)
             if sparse_feat_refine_weight is not None:
                 # w_{x,i}=m_{x,i} * w_i (in IFM and DIFM)
                 sparse_embedding_cat = sparse_embedding_cat * sparse_feat_refine_weight.unsqueeze(1)
+            # batch * 1
             sparse_feat_logit = torch.sum(sparse_embedding_cat, dim=-1, keepdim=False)
             linear_logit += sparse_feat_logit
         if len(dense_value_list) > 0:
+            # (batch * n) * (n * 1)
             dense_value_logit = torch.cat(
                 dense_value_list, dim=-1).matmul(self.weight)
             linear_logit += dense_value_logit
@@ -92,12 +91,13 @@ class Linear(nn.Module):
 
 
 class BaseModel(nn.Module):
+    # 初始化阶段构造离散变量的embedding模块
     def __init__(self, linear_feature_columns, dnn_feature_columns, l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
                  init_std=0.0001, seed=1024, task='binary', device='cpu', gpus=None):
 
         super(BaseModel, self).__init__()
+        # 设置种子
         torch.manual_seed(seed)
-        self.dnn_feature_columns = dnn_feature_columns
 
         self.reg_loss = torch.zeros((1,), device=device)
         self.aux_loss = torch.zeros((1,), device=device)
@@ -107,16 +107,14 @@ class BaseModel(nn.Module):
             raise ValueError(
                 "`gpus[0]` should be the same gpu with `device`")
 
+        # 返回字典{特征名称name: 特征维度}
         self.feature_index = build_input_features(
             linear_feature_columns + dnn_feature_columns)
         self.dnn_feature_columns = dnn_feature_columns
-
+        # 离散特征embedding
         self.embedding_dict = create_embedding_matrix(dnn_feature_columns, init_std, sparse=False, device=device)
-        #         nn.ModuleDict(
-        #             {feat.embedding_name: nn.Embedding(feat.dimension, embedding_size, sparse=True) for feat in
-        #              self.dnn_feature_columns}
-        #         )
 
+        # 线性模块
         self.linear_model = Linear(
             linear_feature_columns, self.feature_index, device=device)
 
@@ -124,7 +122,7 @@ class BaseModel(nn.Module):
 
         self.add_regularization_weight(self.embedding_dict.parameters(), l2=l2_reg_embedding)
         self.add_regularization_weight(self.linear_model.parameters(), l2=l2_reg_linear)
-
+        # 预测层
         self.out = PredictionLayer(task, )
         self.to(device)
 
@@ -154,6 +152,7 @@ class BaseModel(nn.Module):
         if isinstance(x, dict):
             x = [x[feature] for feature in self.feature_index]
 
+        # 划分验证集
         do_validation = False
         if validation_data:
             do_validation = True
@@ -191,6 +190,7 @@ class BaseModel(nn.Module):
             if len(x[i].shape) == 1:
                 x[i] = np.expand_dims(x[i], axis=1)
 
+        # 构建输入数据集
         train_tensor_data = Data.TensorDataset(
             torch.from_numpy(
                 np.concatenate(x, axis=-1)),
@@ -373,6 +373,7 @@ class BaseModel(nn.Module):
         return sparse_embedding_list + varlen_sparse_embedding_list, dense_value_list
 
     def compute_input_dim(self, feature_columns, include_sparse=True, include_dense=True, feature_group=False):
+        # 计算输入维度 （包括，离散embedding和线性）
         sparse_feature_columns = list(
             filter(lambda x: isinstance(x, (SparseFeat, VarLenSparseFeat)), feature_columns)) if len(
             feature_columns) else []

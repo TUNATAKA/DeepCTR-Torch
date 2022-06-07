@@ -16,12 +16,13 @@ from .layers.utils import concat_fun
 
 DEFAULT_GROUP_NAME = "default_group"
 
-
+# 单值离散特征
 class SparseFeat(namedtuple('SparseFeat',
                             ['name', 'vocabulary_size', 'embedding_dim', 'use_hash', 'dtype', 'embedding_name',
                              'group_name'])):
+    # 限制python添加动态属性
     __slots__ = ()
-
+    # 在__init_初始化前调用__new__
     def __new__(cls, name, vocabulary_size, embedding_dim=4, use_hash=False, dtype="int32", embedding_name=None,
                 group_name=DEFAULT_GROUP_NAME):
         if embedding_name is None:
@@ -37,7 +38,7 @@ class SparseFeat(namedtuple('SparseFeat',
     def __hash__(self):
         return self.name.__hash__()
 
-
+# 多值离散特征
 class VarLenSparseFeat(namedtuple('VarLenSparseFeat',
                                   ['sparsefeat', 'maxlen', 'combiner', 'length_name'])):
     __slots__ = ()
@@ -76,7 +77,7 @@ class VarLenSparseFeat(namedtuple('VarLenSparseFeat',
     def __hash__(self):
         return self.name.__hash__()
 
-
+# 连续特征
 class DenseFeat(namedtuple('DenseFeat', ['name', 'dimension', 'dtype'])):
     __slots__ = ()
 
@@ -86,7 +87,7 @@ class DenseFeat(namedtuple('DenseFeat', ['name', 'dimension', 'dtype'])):
     def __hash__(self):
         return self.name.__hash__()
 
-
+# 返回所有特征的名字
 def get_feature_names(feature_columns):
     features = build_input_features(feature_columns)
     return list(features.keys())
@@ -95,7 +96,7 @@ def get_feature_names(feature_columns):
 # def get_inputs_list(inputs):
 #     return list(chain(*list(map(lambda x: x.values(), filter(lambda x: x is not None, inputs)))))
 
-
+# 返回特征和其维度的字典
 def build_input_features(feature_columns):
     # Return OrderedDict: {feature_name:(start, start+dimension)}
 
@@ -122,7 +123,7 @@ def build_input_features(feature_columns):
             raise TypeError("Invalid feature column type,got", type(feat))
     return features
 
-
+# 构建dnn的输入
 def combined_dnn_input(sparse_embedding_list, dense_value_list):
     if len(sparse_embedding_list) > 0 and len(dense_value_list) > 0:
         sparse_dnn_input = torch.flatten(
@@ -154,7 +155,7 @@ def get_varlen_pooling_list(embedding_dict, features, feature_index, varlen_spar
         varlen_sparse_embedding_list.append(emb)
     return varlen_sparse_embedding_list
 
-
+# 返回离散变量embedding模块的字典
 def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, sparse=False, device='cpu'):
     # Return nn.ModuleDict: for sparse features, {embedding_name: nn.Embedding}
     # for varlen sparse features, {embedding_name: nn.EmbeddingBag}
@@ -169,10 +170,6 @@ def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, spar
          for feat in
          sparse_feature_columns + varlen_sparse_feature_columns}
     )
-
-    # for feat in varlen_sparse_feature_columns:
-    #     embedding_dict[feat.embedding_name] = nn.EmbeddingBag(
-    #         feat.dimension, embedding_size, sparse=sparse, mode=feat.combiner)
 
     for tensor in embedding_dict.values():
         nn.init.normal_(tensor.weight, mean=0, std=init_std)
